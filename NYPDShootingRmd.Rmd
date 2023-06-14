@@ -1,0 +1,127 @@
+---
+title: "NYPD Shooting Data"
+author: "Alice Jurkevics"
+date: "2023-05-23"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(formatR)
+knitr::opts_chunk$set(echo = TRUE, nobreak=TRUE, tidy.opts=list(width.cutoff=60), tidy=TRUE)
+options(width=50)
+```
+
+## Loading Librarys
+
+We will start by loading the libraries we will need to analyze this data.
+
+```{r load_libraries, results="hide", message=FALSE, warning=FALSE, error=FALSE}
+library(stringr)
+library(tidyverse)
+library(tinytex)
+library(readr)
+library(dplyr)
+library(magrittr)
+library(tidyr)
+library(ggplot2)
+```
+
+## Importing Data
+
+We can start by reading in the data from our CSV file.
+
+```{r get_shooting_data}
+NYPD_Shooting <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD", show_col_types = FALSE)
+
+```
+
+## Tidying the Data
+
+We can take a look at our data to get an idea of any tidying we might want to do before doing analysis. 
+
+We won't use the coordinate data and some other location data in this data set so we can remove X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat, PRECINCT and JURISDICTION_CODE.
+
+There are also some description columns that we won't need, so we can remove LOCATION_DESC, LOC_OF_OCCUR_DESC and LOC_CLASSFCTN_DESC. 
+
+In our analysis, we won't use victim or perpetrator demographics, so we can remove PERP_AGE_GROUP, PERP_SEX, PERP_RACE, VIC_AGE_GROUP, VIC_SEX, VIC_RACE.
+
+
+```{r tidy_shooting_data}
+
+##Remove the variables that are not necessary for our analysis
+
+NYPD_Shooting <- NYPD_Shooting %>%
+  select(-c(X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat, PRECINCT,JURISDICTION_CODE, LOC_OF_OCCUR_DESC, LOC_CLASSFCTN_DESC, LOCATION_DESC, PERP_AGE_GROUP, PERP_SEX, PERP_RACE, VIC_AGE_GROUP, VIC_SEX, VIC_RACE))
+
+##Look at the first few rows of our data now that we've removed some columns
+
+head(NYPD_Shooting)
+
+```
+
+## Transforming the Data
+
+Now that we have tidied up the data, we can work on transforming it to become better tailored to the analysis that we want to complete.
+
+We will want to change the OCCUR_DATE column into a date column, and we can also add a column that specifies the month in which the shooting took place.
+
+We should also remove any rows that have NAs in any column.
+
+```{r transform_Shooting_Data , message=FALSE, warning=FALSE, error=FALSE}
+
+##Changing the OCCUR_DATE column to be a Date data type.
+
+NYPD_Shooting <- NYPD_Shooting %>% 
+  mutate(OCCUR_DATE=mdy(OCCUR_DATE))
+
+##Adding a column to the data called OCCUR_MONTH that is the month in which the shooting took place
+
+OCCUR_MONTH <- format(as.Date(NYPD_Shooting$OCCUR_DATE, format="%d/%m/%Y"),"%m")
+NYPD_Shooting <- cbind(NYPD_Shooting, OCCUR_MONTH)
+
+##Remove any NAs from the data and look at the first few rows of the transformed data set
+
+NYPD_Shooting<- na.omit(NYPD_Shooting)
+
+head(NYPD_Shooting)
+
+```
+
+## Visualizing the Data
+
+Now that the data is loaded in and transformed, we can begin to explore the data by creating some visualizations. We want to look at the number of shootings by borough, and also by month of the year. We can add color-coding for the STATISTICAL_MURDER_FLAG field, which indicates whether the shooting is also being recorded as a murder.
+
+```{r visual_Shooting_Data, out.width="75%"}
+
+##create a visualization showing shootings by borough
+ggplot(NYPD_Shooting, aes(x=BORO, color=STATISTICAL_MURDER_FLAG)) + geom_bar(stat = "count")
+
+##create a visualization showing shootings by month
+ggplot(NYPD_Shooting, aes(x=OCCUR_MONTH, color=STATISTICAL_MURDER_FLAG)) + geom_bar(stat = "count")
+```
+
+## Analyzing the Data
+
+Out visualizations make us think about the differences in shooting and murder rates by borough. Our prior graphs show that the number of shootings and the number of murders is higher in Brooklyn than other boroughs, and higher in summer months than other months. But we might wonder whether there is a different relationship between shootings and murders in different months or in different boroughs.
+
+```{r analysis_Shooting_Data, out.width="75%"}
+
+##make a Generalized Linear Model with a Binomial Response for the shooting data. The response is STATISTICAL_MURDER_FLAG and the predictor is BORO
+
+glmodboro = glm(STATISTICAL_MURDER_FLAG~BORO, data=NYPD_Shooting, family="binomial")
+summary(glmodboro)
+
+##make a Generalized Linear Model with a Binomial Response for the shooting data. The response is STATISTICAL_MURDER_FLAG and the predictor is OCCUR_MONTH
+
+glmodmonth = glm(STATISTICAL_MURDER_FLAG~OCCUR_MONTH, data=NYPD_Shooting, family="binomial")
+summary(glmodmonth)
+
+```
+
+## Conclusions & Bias Identification
+
+In this analysis we noticed that the number of shootings and shootings that were indicated to also be murders was higher in some boroughs than in other boroughs in New York. We also noticed that there seemed to be more shootings and murders in the summer months in New York than other months. Looking at the data made us wonder about the relationship between shootings and murders, and specifically whether that relationship could be different for different boroughs or months.
+
+There could be some sources of bias in this analysis. There is an inherent bias in crime reporting, and we need to point out that the STATISTICAL_MURDER_FLAG field is entirely determined by whether a human observer judges a shooting to be a murder. There could also be personal bias in the analysis as most people consider certain parts of cities to be more "dangerous" than others, and it's also been common wisdom that summer months can be more violent in certain cities. We are setting out to determine whether these things are statistically supported for the city of New York, so we should try to mitigate this personal bias. We can mitigate personal bias by approaching the analysis from the perspective of no preconceptions about shootings and murders within American cities.
+
+We fit two Generalized Linear Models, one looking at the relationship between whether or not a shooting is a murder and borough, and one looking at the relationship between whether or not a shooting is a murder and month of the year. In our analysis on borough, only one borough seemed to have a statistically significant effect, which was the borough of Manhattan, for this borough the odds that a shooting is a murder seemed to be slightly lower from the grand mean. In our analysis on month, only one month seemed to have a statistically significant difference, August. In August, it seemed that the odds of a shooting being a murder seems to be lower than the grand mean. Further analysis should include judging the models that were created for fit, and determining whether there are any other factors that could be introduced to the model for a stronger fit.
